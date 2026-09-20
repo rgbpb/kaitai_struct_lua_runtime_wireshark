@@ -1,6 +1,45 @@
 local class = require("class")
 local stringstream = require("string_stream")
 
+--
+-- Lua 5.2 provided bitwise operations via the 'bit32' library. Lua 5.3+
+-- removed bit32 in favor of native bitwise operators (& | ~ << >>), so on
+-- those versions 'bit32' is nil. Provide a drop-in polyfill so this runtime
+-- works unmodified on Lua 5.2 (real bit32), 5.3 and 5.4 (native operators).
+--
+-- NOTE: the native-operator code below is built via load() from a string,
+-- rather than written inline, because Lua parses an entire file before
+-- running any of it -- inline '&'/'<<'/'~' tokens would be a syntax error
+-- on Lua 5.1/5.2 even inside a branch that never executes there.
+--
+if not bit32 then
+    local native_src = [[
+        local bit32 = {}
+        local MASK32 = 0xFFFFFFFF
+        function bit32.band(a, b) return (a & b) & MASK32 end
+        function bit32.bor(a, b) return (a | b) & MASK32 end
+        function bit32.bxor(a, b) return (a ~ b) & MASK32 end
+        function bit32.bnot(a) return (~a) & MASK32 end
+        function bit32.lshift(a, n)
+            if n <= -32 or n >= 32 then return 0 end
+            if n < 0 then return (a & MASK32) >> (-n) end
+            return (a << n) & MASK32
+        end
+        function bit32.rshift(a, n)
+            if n <= -32 or n >= 32 then return 0 end
+            if n < 0 then return (a << (-n)) & MASK32 end
+            return (a & MASK32) >> n
+        end
+        return bit32
+    ]]
+    local loader, load_err = load(native_src, "bit32_polyfill")
+    if not loader then
+        error("bit32 is missing and this Lua interpreter doesn't support " ..
+              "native bitwise operators either (" .. tostring(load_err) .. ")")
+    end
+    bit32 = loader()
+end
+
 KaitaiStruct = class.class()
 
 function KaitaiStruct:_init(io)
@@ -211,9 +250,9 @@ function KaitaiStream:read_bits_int_be(n)
     end
 
     local mask = bit32.lshift(1, self.bits_left) - 1 -- `bits_left` is in range 0..7
-    self.bits = bit32.bor(self.bits, mask)
+    self.bits = bit32.band(self.bits, mask)
 
-    return res
+    return bit32.band(res, bit32.lshift(1, n) - 1)
 end
 
 --

@@ -4,6 +4,32 @@
 
 local stringdecode = {}
 
+--
+-- Lua 5.3+ removed the 'bit32' library (replaced by native bitwise
+-- operators). Polyfill it here too, since this file can be loaded
+-- independently of kaitaistruct.lua.
+--
+if not bit32 then
+    local native_src = [[
+        local bit32 = {}
+        local MASK32 = 0xFFFFFFFF
+        function bit32.band(a, b) return (a & b) & MASK32 end
+        function bit32.bor(a, b) return (a | b) & MASK32 end
+        function bit32.lshift(a, n)
+            if n <= -32 or n >= 32 then return 0 end
+            if n < 0 then return (a & MASK32) >> (-n) end
+            return (a << n) & MASK32
+        end
+        return bit32
+    ]]
+    local loader, load_err = load(native_src, "bit32_polyfill")
+    if not loader then
+        error("bit32 is missing and this Lua interpreter doesn't support " ..
+              "native bitwise operators either (" .. tostring(load_err) .. ")")
+    end
+    bit32 = loader()
+end
+
 -- From http://lua-users.org/wiki/LuaUnicode
 local function utf8_to_32(utf8str)
     assert(type(utf8str) == "string")
