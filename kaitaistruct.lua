@@ -1,44 +1,10 @@
 local class = require("class")
 local stringstream = require("string_stream")
 
---
--- Lua 5.2 provided bitwise operations via the 'bit32' library. Lua 5.3+
--- removed bit32 in favor of native bitwise operators (& | ~ << >>), so on
--- those versions 'bit32' is nil. Provide a drop-in polyfill so this runtime
--- works unmodified on Lua 5.2 (real bit32), 5.3 and 5.4 (native operators).
---
--- NOTE: the native-operator code below is built via load() from a string,
--- rather than written inline, because Lua parses an entire file before
--- running any of it -- inline '&'/'<<'/'~' tokens would be a syntax error
--- on Lua 5.1/5.2 even inside a branch that never executes there.
---
-if not bit32 then
-    local native_src = [[
-        local bit32 = {}
-        local MASK32 = 0xFFFFFFFF
-        function bit32.band(a, b) return (a & b) & MASK32 end
-        function bit32.bor(a, b) return (a | b) & MASK32 end
-        function bit32.bxor(a, b) return (a ~ b) & MASK32 end
-        function bit32.bnot(a) return (~a) & MASK32 end
-        function bit32.lshift(a, n)
-            if n <= -32 or n >= 32 then return 0 end
-            if n < 0 then return (a & MASK32) >> (-n) end
-            return (a << n) & MASK32
-        end
-        function bit32.rshift(a, n)
-            if n <= -32 or n >= 32 then return 0 end
-            if n < 0 then return (a << (-n)) & MASK32 end
-            return (a & MASK32) >> n
-        end
-        return bit32
-    ]]
-    local loader, load_err = load(native_src, "bit32_polyfill")
-    if not loader then
-        error("bit32 is missing and this Lua interpreter doesn't support " ..
-              "native bitwise operators either (" .. tostring(load_err) .. ")")
-    end
-    bit32 = loader()
-end
+-- Normally string.unpack (standard since Lua 5.3). Falls back to Wireshark's
+-- Struct.unpack, which has the same signature and format letters.
+local unpack = string.unpack or (Struct and Struct.unpack)
+assert(unpack, "neither string.unpack nor Struct.unpack is available")
 
 KaitaiStruct = class.class()
 
@@ -114,7 +80,7 @@ end
 -------------------------------------------------------------------------------
 
 function KaitaiStream:read_s1()
-    return Struct.unpack('b', self:read_bytes(1))
+    return unpack('b', self:read_bytes(1))
 end
 
 --.............................................................................
@@ -122,15 +88,15 @@ end
 --.............................................................................
 
 function KaitaiStream:read_s2be()
-    return Struct.unpack('>i2', self:read_bytes(2))
+    return unpack('>i2', self:read_bytes(2))
 end
 
 function KaitaiStream:read_s4be()
-    return Struct.unpack('>i4', self:read_bytes(4))
+    return unpack('>i4', self:read_bytes(4))
 end
 
 function KaitaiStream:read_s8be()
-    return Struct.unpack('>i8', self:read_bytes(8))
+    return unpack('>i8', self:read_bytes(8))
 end
 
 --.............................................................................
@@ -138,15 +104,15 @@ end
 --.............................................................................
 
 function KaitaiStream:read_s2le()
-    return Struct.unpack('<i2', self:read_bytes(2))
+    return unpack('<i2', self:read_bytes(2))
 end
 
 function KaitaiStream:read_s4le()
-    return Struct.unpack('<i4', self:read_bytes(4))
+    return unpack('<i4', self:read_bytes(4))
 end
 
 function KaitaiStream:read_s8le()
-    return Struct.unpack('<i8', self:read_bytes(8))
+    return unpack('<i8', self:read_bytes(8))
 end
 
 -------------------------------------------------------------------------------
@@ -154,7 +120,7 @@ end
 -------------------------------------------------------------------------------
 
 function KaitaiStream:read_u1()
-    return Struct.unpack('B', self:read_bytes(1))
+    return unpack('B', self:read_bytes(1))
 end
 
 --.............................................................................
@@ -162,15 +128,15 @@ end
 --.............................................................................
 
 function KaitaiStream:read_u2be()
-    return Struct.unpack('>I2', self:read_bytes(2))
+    return unpack('>I2', self:read_bytes(2))
 end
 
 function KaitaiStream:read_u4be()
-    return Struct.unpack('>I4', self:read_bytes(4))
+    return unpack('>I4', self:read_bytes(4))
 end
 
 function KaitaiStream:read_u8be()
-    return Struct.unpack('>I8', self:read_bytes(8))
+    return unpack('>I8', self:read_bytes(8))
 end
 
 --.............................................................................
@@ -178,15 +144,15 @@ end
 --.............................................................................
 
 function KaitaiStream:read_u2le()
-    return Struct.unpack('<I2', self:read_bytes(2))
+    return unpack('<I2', self:read_bytes(2))
 end
 
 function KaitaiStream:read_u4le()
-    return Struct.unpack('<I4', self:read_bytes(4))
+    return unpack('<I4', self:read_bytes(4))
 end
 
 function KaitaiStream:read_u8le()
-    return Struct.unpack('<I8', self:read_bytes(8))
+    return unpack('<I8', self:read_bytes(8))
 end
 
 --=============================================================================
@@ -198,11 +164,11 @@ end
 -------------------------------------------------------------------------------
 
 function KaitaiStream:read_f4be()
-    return Struct.unpack('>f', self:read_bytes(4))
+    return unpack('>f', self:read_bytes(4))
 end
 
 function KaitaiStream:read_f8be()
-    return Struct.unpack('>d', self:read_bytes(8))
+    return unpack('>d', self:read_bytes(8))
 end
 
 -------------------------------------------------------------------------------
@@ -210,11 +176,11 @@ end
 -------------------------------------------------------------------------------
 
 function KaitaiStream:read_f4le()
-    return Struct.unpack('<f', self:read_bytes(4))
+    return unpack('<f', self:read_bytes(4))
 end
 
 function KaitaiStream:read_f8le()
-    return Struct.unpack('<d', self:read_bytes(8))
+    return unpack('<d', self:read_bytes(8))
 end
 
 --=============================================================================
@@ -239,20 +205,20 @@ function KaitaiStream:read_bits_int_be(n)
         local bytes_needed = math.ceil(bits_needed / 8)
         local buf = {self:_read_bytes_not_aligned(bytes_needed):byte(1, bytes_needed)}
         for i = 1, bytes_needed do
-            res = bit32.bor(bit32.lshift(res, 8), buf[i])
+            res = res << 8 | buf[i]
         end
 
         local new_bits = res
-        res = bit32.bor(bit32.rshift(res, self.bits_left), bit32.lshift(self.bits, bits_needed))
+        res = res >> self.bits_left | self.bits << bits_needed
         self.bits = new_bits -- will be masked at the end of the function
     else
-        res = bit32.rshift(self.bits, -bits_needed) -- shift unneeded bits out
+        res = self.bits >> -bits_needed -- shift unneeded bits out
     end
 
-    local mask = bit32.lshift(1, self.bits_left) - 1 -- `bits_left` is in range 0..7
-    self.bits = bit32.band(self.bits, mask)
+    local mask = (1 << self.bits_left) - 1 -- `bits_left` is in range 0..7
+    self.bits = self.bits & mask
 
-    return bit32.band(res, bit32.lshift(1, n) - 1)
+    return res
 end
 
 --
@@ -275,21 +241,21 @@ function KaitaiStream:read_bits_int_le(n)
         local bytes_needed = math.ceil(bits_needed / 8)
         local buf = {self:_read_bytes_not_aligned(bytes_needed):byte(1, bytes_needed)}
         for i = 1, bytes_needed do
-            res = bit32.bor(res, bit32.lshift(buf[i], ((i - 1) * 8))) -- NB: Lua uses 1-based indexing, but we need 0-based here
+            res = res | buf[i] << ((i - 1) * 8) -- NB: Lua uses 1-based indexing, but we need 0-based here
         end
 
-        local new_bits = bit32.rshift(res, bits_needed)
-        res = bit32.bor(bit32.lshift(res, self.bits_left), self.bits)
+        local new_bits = res >> bits_needed
+        res = res << self.bits_left | self.bits
         self.bits = new_bits
     else
         res = self.bits
-        self.bits = bit32.rshift(self.bits, n)
+        self.bits = self.bits >> n
     end
 
     self.bits_left = -bits_needed % 8
 
-    local mask = bit32.lshift(1, n) - 1 -- unlike some other languages, no problem with this in Lua
-    res = bit32.band(res, mask)
+    local mask = (1 << n) - 1 -- unlike some other languages, no problem with this in Lua
+    res = res & mask
     return res
 end
 
@@ -451,7 +417,7 @@ function KaitaiStream.process_xor_one(data, key)
     local r = ""
 
     for i = 1, #data do
-        local c = bit32.bxor(data:byte(i), key)
+        local c = data:byte(i) ~ key
         r = r .. string.char(c)
     end
 
@@ -464,7 +430,7 @@ function KaitaiStream.process_xor_many(data, key)
     local ki = 1
 
     for i = 1, #data do
-        local c = bit32.bxor(data:byte(i), key:byte(ki))
+        local c = data:byte(i) ~ key:byte(ki)
         r = r .. string.char(c)
         ki = ki + 1
         if ki > kl then
@@ -482,11 +448,11 @@ function KaitaiStream.process_rotate_left(data, amount, group_size)
 
     local result = ""
     local mask = group_size * 8 - 1
-    local anti_amount = bit32.band(-amount, mask)
+    local anti_amount = -amount & mask
 
     for i = 1, #data  do
         local c = data:byte(i)
-        c = bit32.bor(bit32.band(bit32.lshift(c, amount), 0xFF), bit32.rshift(c, anti_amount))
+        c = ((c << amount) & 0xFF) | (c >> anti_amount)
         result = result .. string.char(c)
     end
 
